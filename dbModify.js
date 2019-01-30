@@ -4,8 +4,8 @@ const aql = arango.aql;
 const uuid = require('uuid/v4');
 
 const db = new arango({
-    // url: 'http://localhost:8529'
-    url: 'http://193.176.243.138:8529'
+    url: 'http://localhost:8529'
+    // url: 'http://193.176.243.138:8529'
 });
 db.useDatabase('yiata');
 db.useBasicAuth('root', 'root');
@@ -56,8 +56,6 @@ const addCityData = async function () {
         await partoCityCollection.create();
         console.info('PartoCityCollection created');
     }
-    //create index on Id
-    // await partoCityCollection.createIndex({ type: 'hash', fields: ['Id'], unique: true, sparse: true });
     //truncate data of the collection
     await partoCityCollection.truncate();
     console.info('PartoCityCollection truncated');
@@ -82,24 +80,29 @@ const addCityData = async function () {
     const cities = await readFileBodyAsJSON('../../PropertyCity.json');
 
     const defaultTopDestinations = ["Penang Island", "Istanbul", "Hong Kong Island", "Frankfurt am Main", "Dubai"];
+
+    let cityArray = [];
+    let hotelLookupArray = [];
+
     //create city
     for (const city of cities) {
-        const lookupId = uuid();
+        lookupId = lookupId + 1;
+        // const lookupId = uuid();
         const dest = destinations.find(it => it.Id === city.PropertyDestinationId);
         const country = countries.find(it => it._key === dest.CountryId);
         const dbCity = {
             _key: city.Id.toString(),
-            // Id: city.Id.toString(),
             Name: city.Name,
             Destination: dest.Name,
             CountryId: country._key,
-            lookupKey: lookupId
+            lookupKey: lookupId.toString()
         };
-        const result = await partoCityCollection.save(dbCity);
+        cityArray.push(dbCity);
+        // const result = await partoCityCollection.save(dbCity);
 
         const rate = defaultTopDestinations.some(it => it === city.Name) ? 1 : 0;
         const lookupData = {
-            _key: lookupId,
+            _key: lookupId.toString(),
             Type: 1, //City
             Name: `${city.Name}, ${country.CountryName}`,
             Fulltext: `${city.Name} ${dest.Name} ${country.CountryName} ${country._key}`,
@@ -107,15 +110,19 @@ const addCityData = async function () {
             Providers: [
                 {
                     Type: 1, //Parto
-                    Key: city.Id.toString(),
-                    CollectionId: result._id
+                    Key: city.Id.toString()
                 }
             ]
         };
-        await hotelLookupCollection.save(lookupData);
+        hotelLookupArray.push(lookupData);
+        // await hotelLookupCollection.save(lookupData);
 
-        console.info(`City ${city.Id}-${city.Name} added to PartoHotelCity and HotelLookup Collection`);
+        // console.info(`City ${city.Id}-${city.Name} parsed`);
     }
+    console.info('Adding all cities to PartoHotelCity collection');
+    await partoCityCollection.import(cityArray);
+    console.info('Adding all cities to HotelLookup collection');
+    await hotelLookupCollection.import(hotelLookupArray);
     console.log(`${cities.length} cities added to PartoHotelCity collection`);
 }
 
@@ -195,8 +202,6 @@ const addHotelData = async function () {
         await PartoHotelCollection.create();
         console.info('PartoHotelCollection created');
     }
-    //create index on Id
-    // await PartoHotelCollection.createIndex({ type: 'hash', fields: ['Id'], unique: true, sparse: true });
     //truncate data of the collection
     await PartoHotelCollection.truncate();
     console.info('PartoHotelCollection truncated');
@@ -216,12 +221,21 @@ const addHotelData = async function () {
 
     //load hotel and add them to db
     const hotelFileNames = await readFileNamesInDirectoriesFiltered('../../', 'Property_');
+
+    let hotelArray = [];
+    let hotelLookupArray = [];
+
     for (const hotelFileName of hotelFileNames) {
         const hotels = await readFileBodyAsJSON('../../' + hotelFileName);
+
+        hotelArray = [];
+        hotelLookupArray = [];
+
         console.info(hotels.length + ' hotels in file: ' + hotelFileName);
         for (const hotel of hotels) {
-            const lookupId = uuid();
-            hotel.lookupKey = lookupId;
+            lookupId = lookupId + 1;
+            // const lookupId = uuid();
+            hotel.lookupKey = lookupId.toString();
             hotel.CityId = hotel.PropertyCityId.toString();
             delete hotel.PropertyCityId;
             hotel.Accommodation = accommodations.find(ix => ix.Id === hotel.Accommodation).Name;
@@ -229,14 +243,16 @@ const addHotelData = async function () {
             hotel.Facilities = propertyFacilities.get(hotel.Id);
             hotel._key = hotel.Id.toString();
             delete hotel.Id;
-            const result = await PartoHotelCollection.save(hotel);
+
+            hotelArray.push(hotel);
+            // const result = await PartoHotelCollection.save(hotel);
 
             const cityCursor = await db.query(aql`FOR pc IN ${partoCityCollection} FILTER pc._key == ${hotel.CityId} LIMIT 1 RETURN pc`);
             const city = await cityCursor.next();
             const country = countries.find(it => it._key === city.CountryId);
 
             const lookupData = {
-                _key: lookupId,
+                _key: lookupId.toString(),
                 Type: 2, //Hotel
                 Name: `${hotel.Name}, ${city.Name} ${country.CountryName}`,
                 Fulltext: `${hotel.Name} ${city.Name} ${city.Destination} ${country.CountryName} ${country._key}`,
@@ -244,14 +260,18 @@ const addHotelData = async function () {
                 Providers: [
                     {
                         Type: 1, //Parto
-                        Key: hotel._key,
-                        CollectionId: result._id
+                        Key: hotel._key
                     }
                 ]
             };
-            await hotelLookupCollection.save(lookupData);
-            console.info(`Hotel ${hotel._key}-${hotel.Name} added to PartoHotel Collection and HotelLookup Collection`);
+            hotelLookupArray.push(lookupData);
+            // await hotelLookupCollection.save(lookupData);
+            // console.info(`Hotel ${hotel._key}-${hotel.Name} parsed`);
         }
+        console.info('Adding one file of hotels to PartoHotel collection');
+        await PartoHotelCollection.import(hotelArray);
+        console.info('Adding one file of hotels to HotelLookup collection');
+        await hotelLookupCollection.import(hotelLookupArray);
     }
 
     // create fulltext index
@@ -259,6 +279,7 @@ const addHotelData = async function () {
     await hotelLookupCollection.createFulltextIndex("Fulltext");
 }
 
+let lookupId = 1;
 
 const start = async function () {
     const start = Date.now();
@@ -278,7 +299,8 @@ const start = async function () {
     await addHotelData();
     console.log('ADDING HOTELS FINISHED');
 
-    console.info(`The whole script took ${(Date.now() - start) / 1000} seconds.`)
+    console.info(`The whole script added ${lookupId} city/hotel to HotelLookup collection.`);
+    console.info(`The whole script took ${(Date.now() - start) / 1000} seconds.`);
 }
 
 start();
