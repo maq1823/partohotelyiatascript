@@ -1,18 +1,22 @@
+//parto static data url : https://cdn.partocrs.com/ApiDocument/StaticData/HotelStaticData.zip
+
 const fs = require('fs').promises;
 const arango = require('arangojs');
 const aql = arango.aql;
-const uuid = require('uuid/v4');
+
+const configs = require('./config').values;
+
+const baseAddress = configs.staticFilesBaseAddress;
 
 const db = new arango({
-    url: 'http://localhost:8529'
-    // url: 'http://193.176.243.138:8529'
+    url: configs.dbUrl
 });
-db.useDatabase('yiata');
-db.useBasicAuth('root', 'root');
+db.useDatabase(configs.dbName);
+db.useBasicAuth(configs.dbUserName, configs.dbPassword);
 
 //load a file content async
 const readFileBody = function (fileAddress) {
-    return fs.readFile(fileAddress, 'utf8');
+    return fs.readFile(baseAddress + fileAddress, 'utf8');
 }
 
 const readFileBodyAsJSON = async function (fileAddress) {
@@ -27,7 +31,7 @@ const readFileNamesInDirectoriesFiltered = async function (dir, filter) {
 
 //add new countries from Parto hotel to Country collection of DB
 const addNewCountries = async function () {
-    const hotelCountries = await readFileBodyAsJSON('../../Country.json');
+    const hotelCountries = await readFileBodyAsJSON('Country.json');
 
     let flightCountries = [];
     const countryCollection = db.collection('Country');
@@ -75,9 +79,9 @@ const addCityData = async function () {
     const countryCursor = await countryCollection.all();
     const countries = await countryCursor.all();
     //load destinations
-    const destinations = await readFileBodyAsJSON('../../PropertyDestination.json');
+    const destinations = await readFileBodyAsJSON('PropertyDestination.json');
     //load cities
-    const cities = await readFileBodyAsJSON('../../PropertyCity.json');
+    const cities = await readFileBodyAsJSON('PropertyCity.json');
 
     const defaultTopDestinations = ["Penang Island", "Istanbul", "Hong Kong Island", "Frankfurt am Main", "Dubai"];
 
@@ -87,7 +91,6 @@ const addCityData = async function () {
     //create city
     for (const city of cities) {
         lookupId = lookupId + 1;
-        // const lookupId = uuid();
         const dest = destinations.find(it => it.Id === city.PropertyDestinationId);
         const country = countries.find(it => it._key === dest.CountryId);
         const dbCity = {
@@ -98,7 +101,6 @@ const addCityData = async function () {
             lookupKey: lookupId.toString()
         };
         cityArray.push(dbCity);
-        // const result = await partoCityCollection.save(dbCity);
 
         const rate = defaultTopDestinations.some(it => it === city.Name) ? 1 : 0;
         const lookupData = {
@@ -115,7 +117,6 @@ const addCityData = async function () {
             ]
         };
         hotelLookupArray.push(lookupData);
-        // await hotelLookupCollection.save(lookupData);
 
         // console.info(`City ${city.Id}-${city.Name} parsed`);
     }
@@ -134,15 +135,13 @@ const addFacilityData = async function () {
         await PartoHotelFacilityCollection.create();
         console.info('PartoHotelFacilityCollection created');
     }
-    //create index on Id
-    // await PartoHotelFacilityCollection.createIndex({ type: 'hash', fields: ['Id'], unique: true, sparse: true });
     //truncate data of the collection
     await PartoHotelFacilityCollection.truncate();
     console.info('PartoHotelFacilityCollection truncated');
     //load facility groups
-    const facilityGroups = await readFileBodyAsJSON('../../FacilityGroup.json');
+    const facilityGroups = await readFileBodyAsJSON('FacilityGroup.json');
     //load facilities
-    const facilities = await readFileBodyAsJSON('../../Facility.json');
+    const facilities = await readFileBodyAsJSON('Facility.json');
     for (const facility of facilities) {
         const facilityGroup = facilityGroups.find(it => it.Id === facility.FacilityGroupId);
         const dbFacility = {
@@ -158,8 +157,8 @@ const addFacilityData = async function () {
 
 //load chains intersected with propertyChains, meaning load propertyChains
 const getPropertyChainMap = async function () {
-    const chains = await readFileBodyAsJSON('../../Chain.json');
-    const propertyChains = await readFileBodyAsJSON('../../PropertyChain.json');
+    const chains = await readFileBodyAsJSON('Chain.json');
+    const propertyChains = await readFileBodyAsJSON('PropertyChain.json');
     const aggPropertyChains = new Map();
     propertyChains.forEach(it => {
         const chainName = chains.find(ix => ix.Id === it.ChainId).Name;
@@ -176,10 +175,10 @@ const getPropertyChainMap = async function () {
 }
 
 const getPropertyFacilities = async function () {
-    const fileNames = await readFileNamesInDirectoriesFiltered('../../', 'PropertyFacility_');
+    const fileNames = await readFileNamesInDirectoriesFiltered(baseAddress, 'PropertyFacility_');
     const aggPropertyFacilities = new Map();
     for (const fileName of fileNames) {
-        const propertFacility = await readFileBodyAsJSON('../../' + fileName);
+        const propertFacility = await readFileBodyAsJSON(fileName);
         propertFacility.forEach(it => {
             if (aggPropertyFacilities.has(it.PropertyId)) {
                 const arr = aggPropertyFacilities.get(it.PropertyId);
@@ -206,7 +205,7 @@ const addHotelData = async function () {
     await PartoHotelCollection.truncate();
     console.info('PartoHotelCollection truncated');
     //load accomodations
-    const accommodations = await readFileBodyAsJSON('../../PropertyAccommodation.json');
+    const accommodations = await readFileBodyAsJSON('PropertyAccommodation.json');
     //load chains intersected with propertyChains, meaning load propertyChains
     const propertyChains = await getPropertyChainMap();
     //load propertyFacilities from all those files
@@ -220,13 +219,13 @@ const addHotelData = async function () {
     const hotelLookupCollection = db.collection('HotelLookup');
 
     //load hotel and add them to db
-    const hotelFileNames = await readFileNamesInDirectoriesFiltered('../../', 'Property_');
+    const hotelFileNames = await readFileNamesInDirectoriesFiltered(baseAddress, 'Property_');
 
     let hotelArray = [];
     let hotelLookupArray = [];
 
     for (const hotelFileName of hotelFileNames) {
-        const hotels = await readFileBodyAsJSON('../../' + hotelFileName);
+        const hotels = await readFileBodyAsJSON(hotelFileName);
 
         hotelArray = [];
         hotelLookupArray = [];
@@ -234,18 +233,16 @@ const addHotelData = async function () {
         console.info(hotels.length + ' hotels in file: ' + hotelFileName);
         for (const hotel of hotels) {
             lookupId = lookupId + 1;
-            // const lookupId = uuid();
             hotel.lookupKey = lookupId.toString();
             hotel.CityId = hotel.PropertyCityId.toString();
             delete hotel.PropertyCityId;
             hotel.Accommodation = accommodations.find(ix => ix.Id === hotel.Accommodation).Name;
             hotel.Chains = propertyChains.get(hotel.Id);
-            hotel.Facilities = propertyFacilities.get(hotel.Id);
+            hotel.Facilities = propertyFacilities.get(hotel.Id) || [];
             hotel._key = hotel.Id.toString();
             delete hotel.Id;
 
             hotelArray.push(hotel);
-            // const result = await PartoHotelCollection.save(hotel);
 
             const cityCursor = await db.query(aql`FOR pc IN ${partoCityCollection} FILTER pc._key == ${hotel.CityId} LIMIT 1 RETURN pc`);
             const city = await cityCursor.next();
@@ -265,7 +262,6 @@ const addHotelData = async function () {
                 ]
             };
             hotelLookupArray.push(lookupData);
-            // await hotelLookupCollection.save(lookupData);
             // console.info(`Hotel ${hotel._key}-${hotel.Name} parsed`);
         }
         console.info('Adding one file of hotels to PartoHotel collection');
@@ -303,7 +299,11 @@ const start = async function () {
     console.info(`The whole script took ${(Date.now() - start) / 1000} seconds.`);
 }
 
-start();
+try {
+    start();
+} catch (error) {
+    console.log('error in running script. It will likely be solved by providing a correct value in configs file. The actual error is : ', error);
+}
 
 
 

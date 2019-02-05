@@ -1,16 +1,16 @@
 {
-  "name": "generator",
+  "name": "parto-hote-static-data-to-yiata-arango-database",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "arangojs": "6.10.0",
-    "uuid": "3.3.2"
+    "arangojs": "6.10.0"
   }
 }
