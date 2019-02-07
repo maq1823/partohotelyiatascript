@@ -98,7 +98,7 @@ const addCityData = async function () {
             Name: city.Name,
             Destination: dest.Name,
             CountryId: country._key,
-            lookupKey: lookupId.toString()
+            LookupKey: lookupId.toString()
         };
         cityArray.push(dbCity);
 
@@ -233,7 +233,7 @@ const addHotelData = async function () {
         console.info(hotels.length + ' hotels in file: ' + hotelFileName);
         for (const hotel of hotels) {
             lookupId = lookupId + 1;
-            hotel.lookupKey = lookupId.toString();
+            hotel.LookupKey = lookupId.toString();
             hotel.CityId = hotel.PropertyCityId.toString();
             delete hotel.PropertyCityId;
             hotel.Accommodation = accommodations.find(ix => ix.Id === hotel.Accommodation).Name;
